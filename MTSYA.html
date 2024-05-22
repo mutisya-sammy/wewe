@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Role-based Login System</title>
+    <style>
+        /* CSS styles */
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f0f0f0;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background-color: #ffffff;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(36, 75, 148, 0.1);
+        }
+        label, input, select {
+            display: block;
+            margin-bottom: 10px;
+        }
+        button {
+            padding: 10px 20px;
+            background-color: #007bff;
+            color: #fff;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        button:hover {
+            background-color: #54d2eb;
+        }
+        .error {
+            color: red;
+            margin-top: 5px;
+        }
+        .question-container {
+            margin-top: 20px;
+        }
+        .student-scores {
+            margin-top: 20px;
+        }
+        /* Adjusted CSS for student interface */
+        #studentInterface .question-container ol {
+            padding-left: 0;
+        }
+        #studentInterface .question-container li {
+            position: relative;
+            list-style-type: none;
+            margin-bottom: 10px;
+        }
+        #studentInterface .question-container input[type="radio"] {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            left: -30px;
+        }
+        #studentInterface .question-container label {
+            margin-left: 25px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Role-based Login System</h2>
+        <div id="loginForm">
+            <label for="name">Name:</label>
+            <input type="text" id="name">
+            <label for="regNo">Registration Number:</label>
+            <input type="text" id="regNo">
+            <label>Role:</label>
+            <select id="role" onchange="toggleExaminerFields()">
+                <option value="Student">Student</option>
+                <option value="Examiner">Examiner</option>
+            </select>
+            <div id="examinerCredentials" style="display: none;">
+                <label for="examinerUsername">Username:</label>
+                <input type="text" id="examinerUsername">
+                <label for="examinerPassword">Password:</label>
+                <input type="password" id="examinerPassword">
+            </div>
+            <button onclick="login()">Login</button>
+            <div id="errorMessage" class="error" style="display: none;"></div>
+        </div>
+        <div id="studentInterface" style="display: none;">
+            <!-- Questions and choices will be displayed here -->
+            <h3>Welcome, Student</h3>
+            <p id="timer"></p>
+            <form id="questionForm">
+            </form>
+            <button id="submitTestButton" onclick="submitTest()">Submit Test</button>
+        </div>
+        <div id="examinerInterface" style="display: none;">
+            <h3>Welcome, Examiner</h3>
+            <div class="question-form">
+                <h4>Add a Question</h4>
+                <label for="question">Question:</label>
+                <input type="text" id="question">
+                <label for="optionA">Option A:</label>
+                <input type="text" id="optionA">
+                <label for="optionB">Option B:</label>
+                <input type="text" id="optionB">
+                <label for="optionC">Option C:</label>
+                <input type="text" id="optionC">
+                <label for="optionD">Option D:</label>
+                <input type="text" id="optionD">
+                <label for="answer">Correct Answer (A, B, C, or D):</label>
+                <input type="text" id="answer">
+                <button onclick="addQuestion()">Add Question</button>
+            </div>
+            <div class="question-container" id="examinerQuestions" style="display: none;">
+                <h4>Questions Set Up</h4>
+                <ol id="questionsList"></ol>
+            </div>
+            <div class="student-scores" id="studentScoresContainer" style="display: none;">
+                <h4>Student Scores</h4>
+                <ul id="studentScores"></ul>
+            </div>
+            <div id="examTimeSetup">
+                <h4>Exam Time Setup</h4>
+                <label for="examDate">Exam Date:</label>
+                <input type="date" id="examDate">
+                <label for="startTime">Start Time:</label>
+                <input type="time" id="startTime">
+                <label for="stopTime">Stop Time:</label>
+                <input type="time" id="stopTime">
+                <button onclick="setExamTime()">Set Exam Time</button>
+            </div>
+            <div class="clear-data">
+                <h4>Clear Data</h4>
+                <button onclick="clearQuestions()">Clear Questions</button>
+                <button onclick="clearScores()">Clear Scores</button>
+            </div>
+            <div id="exportData">
+                <h4>Export Data</h4>
+                <button onclick="exportToSpreadsheet()">Export to Spreadsheet</button>
+            </div>
+            <!-- New feature: Search for a student's score -->
+            <div id="searchStudentScore">
+                <h4>Search Student Score</h4>
+                <label for="searchRegNo">Registration Number:</label>
+                <input type="text" id="searchRegNo">
+                <button onclick="searchStudentScore()">Search</button>
+                <div id="searchResult" style="display: none;"></div>
+            </div>
+        </div>
+
+        <script>
+            // JavaScript code
+            var questions = JSON.parse(localStorage.getItem('questions')) || [];
+            var students = JSON.parse(localStorage.getItem('students')) || [];
+            var timer; // Timer variable
+            var currentQuestionIndex = 0;
+            var totalScore = 0;
+            var wrongQuestions = []; // Array to store wrong questions
+            var examinerUsername = 'admin'; // Predefined username for examiner
+            var examinerPassword = 'admin123'; // Predefined password for examiner
+            var hasSubmitted = false; // Flag to check if student has submitted the test
+            var examStartTime; // Exam start time
+            var examStopTime; // Exam stop time
+
+            function login() {
+                var name = document.getElementById("name").value.trim();
+                var regNo = document.getElementById("regNo").value.trim();
+                var role = document.getElementById("role").value;
+                var errorMessage = document.getElementById("errorMessage");
+
+                if (name && regNo) {
+                    if (role === "Student") {
+                        var examDate = localStorage.getItem('examDate');
+                        var startTime = localStorage.getItem('startTime');
+                        var stopTime = localStorage.getItem('stopTime');
+                        var currentTime = new Date().getTime();
+                        var examStartTimeStamp = new Date(examDate + " " + startTime).getTime();
+                        var examStopTimeStamp = new Date(examDate + " " + stopTime).getTime();
+
+                        if (currentTime >= examStartTimeStamp && currentTime <= examStopTimeStamp) {
+                            showStudentInterface(name, regNo);
+                        } else {
+                            errorMessage.textContent = "Exam is not available at this time.";
+                            errorMessage.style.display = "block";
+                        }
+                    } else if (role === "Examiner") {
+                        var username = document.getElementById("examinerUsername").value.trim();
+                        var password = document.getElementById("examinerPassword").value.trim();
+                        if (username === examinerUsername && password === examinerPassword) {
+                            showExaminerInterface();
+                        } else {
+                            errorMessage.textContent = "Invalid examiner credentials.";
+                            errorMessage.style.display = "block";
+                        }
+                    }
+                } else {
+                    errorMessage.textContent = "Name and Registration number cannot be empty.";
+                    errorMessage.style.display = "block";
+                }
+            }
+
+            function toggleExaminerFields() {
+                var role = document.getElementById("role").value;
+                var examinerCredentials = document.getElementById("examinerCredentials");
+                if (role === "Examiner") {
+                    examinerCredentials.style.display = "block";
+                } else {
+                    examinerCredentials.style.display = "none";
+                }
+            }
+
+            function showStudentInterface(name, regNo) {
+                hideAllInterfaces();
+                var studentInterface = document.getElementById("studentInterface");
+                studentInterface.style.display = "block";
+                studentInterface.innerHTML = `
+                    <h3>Welcome, ${name} (${regNo})</h3>
+                    <p>Date of Exam: ${localStorage.getItem('examDate')}</p>
+                    <p>Exam Start Time: ${localStorage.getItem('startTime')}</p>
+                    <p>Exam Stop Time: ${localStorage.getItem('stopTime')}</p>
+                    <p id="timer"></p>
+                `;
+                displayAllQuestions();
+                startTimer();
+            }
+
+            function displayAllQuestions() {
+                var studentInterface = document.getElementById("studentInterface");
+                studentInterface.innerHTML += `
+                    <form id="questionForm">
+                `;
+                questions.forEach((questionObj, index) => {
+                    var questionHTML = `
+                        <div class="question-container">
+                            <h4>Question ${index + 1}</h4>
+                            <p>${questionObj.question}</p>
+                            <ul>
+                                ${questionObj.options.map((option, optionIndex) => `
+                                    <li>
+                                        <label>
+                                            <input type="radio" name="answer${index}" value="${String.fromCharCode(65 + optionIndex)}">
+                                            ${String.fromCharCode(65 + optionIndex)}. ${option}
+                                        </label>
+                                    </li>
+                                `).join('')}
+                            </ul>
+                        </div>
+                    `;
+                    studentInterface.innerHTML += questionHTML;
+                });
+                studentInterface.innerHTML += `
+                    <button id="submitTestButton" onclick="submitTest()">Submit Test</button>
+                    </form>
+                `;
+            }
+
+            function submitTest() {
+                if (!hasSubmitted) {
+                    calculateScore();
+                    var studentName = document.getElementById("name").value.trim();
+                    var studentRegNo = document.getElementById("regNo").value.trim();
+                    var studentScore = totalScore;
+                    students.push({ name: studentName, regNo: studentRegNo, score: studentScore });
+                    localStorage.setItem('students', JSON.stringify(students)); // Save students' scores
+                    totalScore = 0; // Reset total score
+                    displayStudentScores(); // Update student scores immediately
+                    displayQuestionsAndAnswers(); // Display questions and answers
+                    var questionForm = document.getElementById("questionForm");
+                    questionForm.style.display = "none"; // Hide the question form
+                    document.getElementById("studentInterface").style.display = "none"; // Hide the student interface
+                    hasSubmitted = true;
+                }
+            }
+
+            function appendStudentScore(name, regNo, score, rank) {
+                var studentScore = document.createElement("li");
+                studentScore.textContent = `Name: ${name}, Registration No: ${regNo}, Score: ${score}, Rank: ${rank}`;
+                document.getElementById("studentScores").appendChild(studentScore);
+            }
+
+            function displayStudentScores() {
+                var studentScoresContainer = document.getElementById("studentScoresContainer");
+                studentScoresContainer.style.display = "block";
+                var studentScores = document.getElementById("studentScores");
+                studentScores.innerHTML = "";
+                students.sort((a, b) => b.score - a.score); // Sort students by score in descending order
+                students.forEach((student, index) => {
+                    appendStudentScore(student.name, student.regNo, student.score, index + 1);
+                });
+            }
+
+            function displayQuestionsAndAnswers() {
+                var studentInterface = document.getElementById("studentInterface");
+                var questionsAndAnswersContainer = document.createElement("div");
+                questionsAndAnswersContainer.classList.add("question-container");
+                questionsAndAnswersContainer.innerHTML = "<h4>Questions & Answers</h4>";
+                var questionsAndAnswersList = document.createElement("ol");
+                questions.forEach((questionObj, index) => {
+                    var questionItem = document.createElement("li");
+                    questionItem.textContent = questionObj.question;
+                    var answer = document.createElement("p");
+                    answer.textContent = "Answer: " + questionObj.answer;
+                    questionItem.appendChild(answer);
+                    questionsAndAnswersList.appendChild(questionItem);
+                });
+                questionsAndAnswersContainer.appendChild(questionsAndAnswersList);
+                studentInterface.appendChild(questionsAndAnswersContainer);
+            }
+
+            function showExaminerInterface() {
+                hideAllInterfaces();
+                var examinerInterface = document.getElementById("examinerInterface");
+                examinerInterface.style.display = "block";
+                displayQuestions();
+                displayStudentScores();
+            }
+
+            function hideAllInterfaces() {
+                var studentInterface = document.getElementById("studentInterface");
+                var examinerInterface = document.getElementById("examinerInterface");
+                var loginForm = document.getElementById("loginForm");
+                loginForm.style.display = "none";
+                studentInterface.style.display = "none";
+                examinerInterface.style.display = "none";
+            }
+
+            function addQuestion() {
+                var question = document.getElementById("question").value.trim();
+                var optionA = document.getElementById("optionA").value.trim();
+                var optionB = document.getElementById("optionB").value.trim();
+                var optionC = document.getElementById("optionC").value.trim();
+                var optionD = document.getElementById("optionD").value.trim();
+                var answer = document.getElementById("answer").value.trim().toUpperCase();
+                questions.push({ question: question, options: [optionA, optionB, optionC, optionD], answer: answer });
+                localStorage.setItem('questions', JSON.stringify(questions)); // Save questions
+                displayQuestions();
+                clearQuestionForm();
+            }
+
+            function clearQuestionForm() {
+                document.getElementById("question").value = "";
+                document.getElementById("optionA").value = "";
+                document.getElementById("optionB").value = "";
+                document.getElementById("optionC").value = "";
+                document.getElementById("optionD").value = "";
+                document.getElementById("answer").value = "";
+            }
+
+            function displayQuestions() {
+                var questionsList = document.getElementById("questionsList");
+                questionsList.innerHTML = "";
+                questions.forEach((questionObj, index) => {
+                    var questionItem = document.createElement("li");
+                    questionItem.textContent = questionObj.question;
+                    var optionsList = document.createElement("ul");
+                    questionObj.options.forEach((option, optionIndex) => {
+                        var optionItem = document.createElement("li");
+                        optionItem.textContent = `${String.fromCharCode(65 + optionIndex)}. ${option}`;
+                        optionsList.appendChild(optionItem);
+                    });
+                    questionItem.appendChild(optionsList);
+                    var correctAnswer = document.createElement("p");
+                    correctAnswer.textContent = "Correct Answer: " + questionObj.answer;
+                    questionItem.appendChild(correctAnswer);
+                    questionsList.appendChild(questionItem);
+                });
+                if (questions.length > 0) {
+                    document.getElementById("examinerQuestions").style.display = "block";
+                }
+            }
+
+            function setExamTime() {
+                var examDate = document.getElementById('examDate').value;
+                var startTime = document.getElementById('startTime').value;
+                var stopTime = document.getElementById('stopTime').value;
+                localStorage.setItem('examDate', examDate);
+                localStorage.setItem('startTime', startTime);
+                localStorage.setItem('stopTime', stopTime);
+                alert('Exam time set successfully!');
+            }
+
+            function clearQuestions() {
+                if (confirm("Are you sure you want to clear all questions?")) {
+                    questions = [];
+                    localStorage.setItem('questions', JSON.stringify(questions));
+                    displayQuestions();
+                }
+            }
+
+            function clearScores() {
+                if (confirm("Are you sure you want to clear all scores?")) {
+                    students = [];
+                    localStorage.setItem('students', JSON.stringify(students));
+                    displayStudentScores();
+                }
+            }
+
+            // New functions to calculate the correct score
+            function calculateScore() {
+                totalScore = 0;
+                wrongQuestions = [];
+                questions.forEach((question, index) => {
+                    var radios = document.getElementsByName(`answer${index}`);
+                    var selectedAnswer;
+                    for (var i = 0; i < radios.length; i++) {
+                        if (radios[i].checked) {
+                            selectedAnswer = radios[i].value;
+                            break;
+                        }
+                    }
+                    if (selectedAnswer === question.answer) {
+                        totalScore++;
+                    } else {
+                        wrongQuestions.push({
+                            question: question.question,
+                            correctAnswer: question.answer
+                        });
+                    }
+                });
+            }
+
+            // Update the submitTest function to calculate the score before submitting
+            function submitTest() {
+                if (!hasSubmitted) {
+                    calculateScore();
+                    var studentName = document.getElementById("name").value.trim();
+                    var studentRegNo = document.getElementById("regNo").value.trim();
+                    var studentScore = totalScore;
+                    students.push({ name: studentName, regNo: studentRegNo, score: studentScore });
+                    localStorage.setItem('students', JSON.stringify(students)); // Save students' scores
+                    totalScore = 0; // Reset total score
+                    displayStudentScores(); // Update student scores immediately
+                    displayQuestionsAndAnswers(); // Display questions and answers
+                    var questionForm = document.getElementById("questionForm");
+                    questionForm.style.display = "none"; // Hide the question form
+                    document.getElementById("studentInterface").style.display = "none"; // Hide the student interface
+                    hasSubmitted = true;
+                }
+            }
+
+            // New function to export data to a spreadsheet
+            function exportToSpreadsheet() {
+                var studentData = [];
+                students.forEach((student) => {
+                    studentData.push([student.name, student.regNo, student.score]);
+                });
+                var csvContent = "Name,Registration Number,Score\n";
+                studentData.forEach((row) => {
+                    csvContent += row.join(",") + "\n";
+                });
+                var blob = new Blob([csvContent], { type: "text/csv;charset=utf-8" });
+                var link = document.createElement("a");
+                link.href = URL.createObjectURL(blob);
+                link.download = "student_scores.csv";
+                link.click();
+            }
+
+            // New function to search for a student's score
+            function searchStudentScore() {
+                var searchRegNo = document.getElementById("searchRegNo").value.trim();
+                var studentScore;
+                students.forEach((student) => {
+                    if (student.regNo === searchRegNo) {
+                        studentScore = student.score;
+                    }
+                });
+                if (studentScore) {
+                    document.getElementById("searchResult").textContent = `Score: ${studentScore}`;
+                    document.getElementById("searchResult").style.display = "block";
+                } else {
+                    document.getElementById("searchResult").textContent = "Student not found.";
+                    document.getElementById("searchResult").style.display = "block";
+                }
+            }
+        </script>
+    </div>
+</body>
+</html>
